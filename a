@@ -17,7 +17,7 @@ const app = express()
 const cors = require('cors')
 const CronJob = require('cron').CronJob;
 
-const output = '360.mp4'
+const output = 'videos/360.mp4'
   let downloaded = 0
   if (fs.existsSync(output)) {
     downloaded = fs.statSync(output).size
