@@ -23,7 +23,7 @@ const output = 'videos/360.mp4'
     downloaded = fs.statSync(output).size
   }
    
-  const video = youtubedl('https://drive.google.com/file/d/1NFVxw-VW8dPZda7FwLbxbhR6Fm2E0N7k',
+  const video = youtubedl('https://drive.google.com/file/d/1lz0OUcEQUGHXFBdxsr17RyZaqbqauxnQ',
    
     // Optional arguments passed to youtube-dl.
     ['--format=18'],
