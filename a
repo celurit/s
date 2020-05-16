@@ -1,0 +1,512 @@
+const ffmpeg = require('fluent-ffmpeg')
+const Installerffmpeg = require('@ffmpeg-installer/ffmpeg')
+const Installerffprobe = require('@ffprobe-installer/ffprobe')
+ffmpeg.setFfmpegPath(Installerffmpeg.path)
+ffmpeg.setFfprobePath(Installerffprobe.path)
+const fs = require('fs')
+const youtubedl = require('youtube-dl')
+const request =  require('request')
+const md5 = require('md5')
+const path = require('path')
+const low = require('lowdb')
+const FileSync = require('lowdb/adapters/FileSync')
+const adapter = new FileSync('db.json')
+const db = low(adapter)
+const express = require('express')
+const app = express()
+const cors = require('cors')
+const CronJob = require('cron').CronJob;
+db.defaults({ file: [] })
+  .write();
+
+const job = new CronJob('0 */2 * * * *', function() { // dua menit
+
+  var u = db.get('file')
+    .filter({ download: 'unduh'})
+    .take(1)
+    .value()
+
+  if(u.length == 0) {
+
+    var t = db.get('file')
+      .filter({ download: 'tunggu'})
+      .take(1)
+      .value()
+    
+    if(t.length == 1) {
+
+      download(t[0].id)
+      console.log('download')
+
+    } else {
+
+      console.log('u: end')
+
+    }
+
+  } else {
+
+    console.log('u: wait')
+
+  }
+
+});
+
+var jobs = new CronJob('0 */5 * * * *', function() {
+
+  var e = db.get('file')
+    .filter({ encoding: 'encoding'})
+    .take(1)
+    .value()
+
+  if(e.length == 0) {
+
+    var d = db.get('file')
+      .filter({ encoding: 'tunggu'})
+      .take(1)
+      .value()
+
+    
+    if(d.length == 1 && d[0].download == 'selesai') {
+
+      db.get('file')
+        .find({ id: d[0].id })
+        .assign({ encoding: 'encoding'})
+        .write()
+      //download(t[0].id)
+      if(d[0].mp4_360) {
+        encode(d[0].id, d[0].mp4_360)
+      }
+      if(d[0].mp4_480) {
+        encode(d[0].id, d[0].mp4_480)
+      }
+      if(d[0].mp4_720) {
+        encode(d[0].id, d[0].mp4_720)
+      }
+      
+      console.log('start')
+
+      db.get('file')
+        .find({ id: d[0].id })
+        .assign({ encoding: 'selesai'})
+        .write()
+
+    } else {
+
+      console.log('e: end')
+
+    }
+
+  } else {
+
+    console.log('e: wait')
+
+  }
+
+});
+job.start();
+
+jobs.start();
+
+
+app.use(cors())
+
+app.get('/', function (req, res) {
+  res.send(`
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <video id="video"></video>
+<script>
+  var video = document.getElementById('video');
+  if(Hls.isSupported()) {
+    var hls = new Hls();
+    hls.loadSource('https://kuda-terbang.herokuapp.com/videos/138157d8f073eb7137e53b88e49f43a2/360p.m3u8');
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED,function() {
+      video.play();
+  });
+ }
+ </script>
+    `)
+})
+
+app.get('/f/:id', function (req, res) {
+
+  console.log(req.params.id);
+  
+  var f = db.get('file')
+    .filter({ id: req.params.id})
+    .value()
+
+  if(f.length == 0) { // tambah
+
+    db.get('file')
+      .push({ 
+        id: req.params.id, 
+        download: 'tunggu', 
+        encoding: 'tunggu'
+      })
+      .write()
+
+    res.send('tambah')
+
+  } else {
+
+    res.send(f[0])
+
+  }
+
+})
+
+app.get('/unduh', function (req, res) {
+
+  var u = db.get('file')
+    .filter({ download: 'unduh'})
+    .take(1)
+    .value()
+
+  if(u.length == 0) {
+
+    var t = db.get('file')
+      .filter({ download: 'tunggu'})
+      .take(1)
+      .value()
+    
+    if(t.length == 1) {
+
+      download(t[0].id)
+      res.send('start');
+
+    } else {
+
+      res.send('end')
+
+    }
+
+  } else {
+
+    res.send('wait');
+
+  }
+
+})
+
+app.get('/encode', function (req, res) {
+
+  var e = db.get('file')
+    .filter({ encoding: 'encoding'})
+    .take(1)
+    .value()
+
+  if(e.length == 0) {
+
+    var d = db.get('file')
+      .filter({ encoding: 'tunggu'})
+      .take(1)
+      .value()
+
+    
+    if(d.length == 1 && d[0].download == 'selesai') {
+
+      db.get('file')
+        .find({ id: d[0].id })
+        .assign({ encoding: 'encoding'})
+        .write()
+      //download(t[0].id)
+      if(d[0].mp4_360) {
+        encode(d[0].id, d[0].mp4_360)
+      }
+      if(d[0].mp4_480) {
+        encode(d[0].id, d[0].mp4_480)
+      }
+      if(d[0].mp4_720) {
+        encode(d[0].id, d[0].mp4_720)
+      }
+      res.send('start');
+
+      db.get('file')
+        .find({ id: d[0].id })
+        .assign({ encoding: 'selesai'})
+        .write()
+
+    } else {
+
+      res.send('end')
+
+    }
+
+  } else {
+
+    res.send('encoding')
+
+  }
+
+})
+
+app.use('/videos', express.static('videos'));
+
+app.listen(3002);
+
+function download(id) {
+
+  youtubedl.getInfo('https://drive.google.com/file/d/' + id,function(err, info) {
+
+    if (err) {
+
+      console.log(db.get('file')
+        .remove({ id: id })
+        .write())
+
+    } else {
+
+      var k = Object.keys(info.formats);
+      var d = 'videos/' + md5(info.display_id); // dir
+
+      if (!fs.existsSync(d)){
+        fs.mkdirSync(d);
+      }
+
+      db.get('file')
+        .find({ id: id })
+        .assign({ download: 'unduh'})
+        .write()
+
+      for( var i = 0,length = k.length; i < length; i++ ) {
+
+        if(info.formats[k[i]].format_id == 18) {
+
+          save(id, 360, info.formats[k[i]].url, info.formats[k[i]].http_headers)
+
+        }
+
+        if(info.formats[k[i]].format_id == 59) {
+
+          save(id, 480, info.formats[k[i]].url, info.formats[k[i]].http_headers)
+
+
+        }
+
+        if(info.formats[k[i]].format_id == 22) {
+
+          save(id, 720, info.formats[k[i]].url, info.formats[k[i]].http_headers)
+
+
+        }
+
+      }
+
+      db.get('file')
+        .find({ id: id })
+        .assign({ download: 'selesai'})
+        .write()
+
+    }
+
+  });
+
+}
+
+function save(id, quality, url, header) {
+
+  var r = request.defaults({
+    url: url,
+    headers: header,
+    ecdhCurve: 'auto',
+  });
+
+  var f = 'videos/'+md5(id)+'/'+quality+'.mp4'
+
+  var a
+
+  if(quality == 360) {
+
+    a = {mp4_360: f}
+
+  }
+
+  if(quality == 480) {
+
+    a = {mp4_480: f}
+
+  }
+
+  if(quality == 720) {
+
+    a = {mp4_720: f}
+
+  }
+
+  if (!fs.existsSync(f)){
+          
+    var s = fs.createWriteStream(f);
+    s.on('close', function() {
+      db.get('file')
+        .find({ id: id })
+        .assign(a)
+        .write()
+    });
+
+    r(url).pipe(s);
+
+  } else {
+    
+    console.log('ada');
+  
+  }
+
+}
+
+function encode(id, file) {
+  
+  var arr = ['360', '480', '720'];
+  ffmpeg.ffprobe(file, function(err, metadata) {
+    if (err) throw err
+
+    var h = metadata.streams['0'].height
+    var f = arr.indexOf(h.toString())
+
+    if(f !== '-1') {
+      console.log('start');
+      start(id, file, h);
+    }   
+  });
+
+}
+
+function start(id, file, resolusi) {
+
+  if(resolusi == 360) {
+    var f = 'videos/'+md5(id)
+    var o = f + '/360p.m3u8'
+
+    if (!fs.existsSync(o)){
+
+      ffmpeg(file).addOptions([ //360
+        '-profile:v main',
+        '-vf scale=w=640:h=360:force_original_aspect_ratio=decrease',
+        '-c:a aac',
+        '-ar 48000',
+        '-b:a 96k',
+        '-c:v h264',
+        '-crf 20',
+        '-g 48',
+        '-keyint_min 48',
+        '-sc_threshold 0',
+        '-b:v 800k',
+        '-maxrate 856k',
+        '-bufsize 1200k',
+        '-hls_time 10',
+        '-hls_segment_filename '+f+'/360p_%03d.ts',
+        '-hls_playlist_type vod',
+        '-f hls'
+      ]).output(o).on('end', function() {
+
+        db.get('file')
+          .find({ id: id })
+          .assign({ hls_360: o })
+          .write()
+
+        console.log(id)
+
+      }).run()
+
+    } else {
+    
+      console.log('ada');
+  
+    }
+
+  }
+
+  if(resolusi == 480) {
+
+    var f = 'videos/'+md5(id)
+    var o = f + '/480p.m3u8'
+
+    if (!fs.existsSync(o)){
+
+      ffmpeg(file).addOptions([ //360
+        '-profile:v main',
+        '-vf scale=w=854:h=480:force_original_aspect_ratio=decrease',
+        '-c:a aac',
+        '-ar 48000',
+        '-b:a 128k',
+        '-c:v h264',
+        '-crf 20',
+        '-g 48',
+        '-keyint_min 48',
+        '-sc_threshold 0',
+        '-b:v 1400k',
+        '-maxrate 1498k',
+        '-bufsize 2100k',
+        '-hls_time 10',
+        '-hls_segment_filename '+f+'/480p_%03d.ts',
+        '-hls_playlist_type vod',
+        '-f hls'
+      ]).output(o).on('end', function() {
+
+        db.get('file')
+          .find({ id: id })
+          .assign({ hls_480: o })
+          .write()
+
+        console.log(id)
+
+      }).run()
+
+    } else {
+    
+      console.log('ada');
+  
+    }
+
+  }
+
+  if(resolusi == 720) {
+
+    var f = 'videos/'+md5(id)
+    var o = f + '/720p.m3u8'
+
+    if (!fs.existsSync(o)){
+
+      ffmpeg(file).addOptions([ //360
+        '-profile:v main',
+        '-vf scale=w=1280:h=720:force_original_aspect_ratio=decrease',
+        '-c:a aac',
+        '-ar 48000',
+        '-b:a 128k',
+        '-c:v h264',
+        '-crf 20',
+        '-g 48',
+        '-keyint_min 48',
+        '-sc_threshold 0',
+        '-b:v 2800k',
+        '-maxrate 2996k',
+        '-bufsize 4200k',
+        '-hls_time 10', 
+        '-hls_segment_filename '+f+'/720p_%03d.ts',
+        '-hls_playlist_type vod',
+        '-f hls'
+      ]).output(o).on('end', function() {
+
+        db.get('file')
+          .find({ id: id })
+          .assign({ hls_720: o })
+          .write()
+
+        console.log(id)
+
+      }).run()
+
+    } else {
+    
+      console.log('ada');
+  
+    }
+
+  }
+
+}
+
+function callback(file) {
+  console.log(file)
+}
