@@ -119,7 +119,7 @@ app.get('/', function (req, res) {
   var video = document.getElementById('video');
   if(Hls.isSupported()) {
     var hls = new Hls();
-    hls.loadSource('https://kuda-terbang.herokuapp.com/videos/138157d8f073eb7137e53b88e49f43a2/360p.m3u8');
+    hls.loadSource('http://165.22.57.211:3002/videos/138157d8f073eb7137e53b88e49f43a2/360p.m3u8');
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED,function() {
       video.play();
@@ -337,7 +337,7 @@ function save(id, quality, url, header) {
 
   if (!fs.existsSync(f)){
           
-    var s = fs.createWriteStream(f);
+    /*var s = fs.createWriteStream(f);
     s.on('close', function() {
       db.get('file')
         .find({ id: id })
@@ -345,7 +345,10 @@ function save(id, quality, url, header) {
         .write()
     });
 
-    r(url).pipe(s);
+    r(url).pipe(s);*/if(quality == 360) {
+    ydl(f, id)
+
+  }
 
   } else {
     
@@ -355,6 +358,52 @@ function save(id, quality, url, header) {
 
 }
 
+function ydl(output, id) {
+
+  let downloaded = 0
+  if (fs.existsSync(output)) {
+    downloaded = fs.statSync(output).size
+  }
+   
+  const video = youtubedl('https://drive.google.com/file/d/' + id,
+   
+    // Optional arguments passed to youtube-dl.
+    ['--format=18'],
+   
+    // start will be sent as a range header
+    { start: downloaded, cwd: __dirname })
+   
+  // Will be called when the download starts.
+  video.on('info', function(info) {
+    console.log('Download started')
+    console.log('filename: ' + info._filename)
+   
+    // info.size will be the amount to download, add
+    let total = info.size + downloaded
+    console.log('size: ' + total)
+   
+    if (downloaded > 0) {
+      // size will be the amount already downloaded
+      console.log('resuming from: ' + downloaded)
+   
+      // display the remaining bytes to download
+      console.log('remaining bytes: ' + info.size)
+    }
+  })
+   
+  video.pipe(fs.createWriteStream(output, { flags: 'a' }))
+   
+  // Will be called if download was already completed and there is nothing more to download.
+  video.on('complete', function complete(info) {
+    'use strict'
+    console.log('filename: ' + info._filename + ' already downloaded.')
+  })
+   
+  video.on('end', function() {
+    console.log('finished downloading!')
+  })
+
+}
 function encode(id, file) {
   
   var arr = ['360', '480', '720'];
