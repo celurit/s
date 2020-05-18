@@ -1,3 +1,4 @@
+
 const ffmpeg = require('fluent-ffmpeg')
 const Installerffmpeg = require('@ffmpeg-installer/ffmpeg')
 const Installerffprobe = require('@ffprobe-installer/ffprobe')
@@ -17,6 +18,7 @@ const express = require('express')
 const app = express()
 const cors = require('cors')
 const CronJob = require('cron').CronJob;
+const wget = require('wget-improved');
 db.defaults({ file: [] })
   .write();
 
@@ -63,20 +65,27 @@ app.listen(3002);
 function download(id) {
   
   var file = 'videos/'+id
-
+  var src ='https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&key=AIzaSyDaiRmFxm-sC_OSbtv_CfSzlOclQCfuKdM'
+  var options = {
+    // see options below
+  };
   if (!fs.existsSync(file)) {
-    progress(request('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&key=AIzaSyDaiRmFxm-sC_OSbtv_CfSzlOclQCfuKdM'), {
-    })
-    .on('progress', function (state) {   
-      console.log('progress', state);
-    })
-    .on('error', function (err) {
-      console.log(err);
-    })
-    .on('end', function () {
-      console.log('selesai')
-    })
-    .pipe(fs.createWriteStream(file));
+
+var download = wget.download(src, file, options);
+download.on('error', function(err) {
+    console.log(err);
+});
+download.on('start', function(fileSize) {
+    console.log(fileSize);
+});
+download.on('end', function(output) {
+    console.log(output);
+});
+download.on('progress', function(progress) {
+    typeof progress === 'number'
+    console.log(progress)
+});
+
   } else {
     console.log('sudah di download')
   }
